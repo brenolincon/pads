@@ -1,8 +1,75 @@
+/* ================= LOADER SCREEN ================= */
+
+#loader-screen {
+  position: fixed;
+  inset: 0;
+  background: linear-gradient(135deg, #0a0a15 0%, #16213e 50%, #1a0a2e 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  transition: opacity 0.6s ease;
+}
+
+.loader-content {
+  text-align: center;
+  width: 320px;
+  animation: fadeInUp 0.8s ease-out;
+}
+
+.logo-glow {
+  font-size: 60px;
+  margin-bottom: 10px;
+  animation: glow 2s infinite ease-in-out;
+}
+
+.loader-title {
+  font-size: 26px;
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+  background: linear-gradient(135deg, #00d9ff, #8338ec, #ff006e);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.loader-status {
+  font-size: 14px;
+  color: #aaa;
+  margin-bottom: 25px;
+}
+
+.progress-bar {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #00d9ff, #8338ec);
+  transition: width 0.3s ease;
+}
+
+@keyframes glow {
+  0%,
+  100% {
+    text-shadow: 0 0 10px #00d9ff;
+  }
+  50% {
+    text-shadow: 0 0 25px #8338ec;
+  }
+}
 /* ===== RESET E VARIÁVEIS GLOBAIS ===== */
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+}
+
+#app.fade-in {
+  animation: fadeInUp 0.6s ease-out both;
 }
 
 :root {
