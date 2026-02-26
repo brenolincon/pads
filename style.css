@@ -463,6 +463,28 @@ header {
   }
 }
 
+.mixer {
+  display: flex;
+  gap: 40px;
+  justify-content: center;
+  margin: 20px 0;
+}
+
+.fader-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #ccc;
+}
+
+.fader-group input[type="range"] {
+  width: 140px;
+  accent-color: #8338ec;
+  cursor: pointer;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.01ms !important;

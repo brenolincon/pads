@@ -2,6 +2,9 @@
 
 /* ================= CONFIG ================= */
 
+let padsMasterVolume = 1;
+let drumsMasterVolume = 1;
+
 const PAD_FILES = {
   A: "A Pad.mp3",
   "A#": "As Pad.mp3",
@@ -40,6 +43,8 @@ const app = {
   notaAtiva: null,
   padSrc: null,
   padGain: null,
+  padMaster: null,
+  drumMaster: null,
 };
 
 /* ================= LOADER ================= */
@@ -71,6 +76,18 @@ function finishLoading() {
 }
 
 /* ================= AUDIO ================= */
+
+function updatePadsVolume() {
+  if (app.padMaster) {
+    app.padMaster.gain.value = padsMasterVolume * padsMasterVolume;
+  }
+}
+
+function updateDrumsVolume() {
+  if (app.drumMaster) {
+    app.drumMaster.gain.value = drumsMasterVolume * drumsMasterVolume;
+  }
+}
 
 async function fetchDecode(path) {
   const r = await fetch(path);
@@ -106,9 +123,11 @@ function stopPad() {
     app.padSrc.disconnect();
     app.padGain.disconnect();
   }
+
   document
     .querySelectorAll(".tecla.ativa")
     .forEach((el) => el.classList.remove("ativa"));
+
   app.padSrc = null;
   app.notaAtiva = null;
 }
@@ -126,11 +145,13 @@ function playPad(nota) {
 
   const src = app.ctx.createBufferSource();
   const gain = app.ctx.createGain();
+
   gain.gain.value = 0.75;
 
   src.buffer = buf;
   src.loop = true;
-  src.connect(gain).connect(app.ctx.destination);
+
+  src.connect(gain).connect(app.padMaster);
   src.start();
 
   app.padSrc = src;
@@ -148,7 +169,8 @@ function playDrum(k) {
 
   const s = app.ctx.createBufferSource();
   s.buffer = buf;
-  s.connect(app.ctx.destination);
+
+  s.connect(app.drumMaster);
   s.start();
 
   const el = document.querySelector(`[data-drum="${k}"]`);
@@ -182,6 +204,17 @@ function bindEvents() {
   });
 
   window.addEventListener("blur", stopPad);
+
+  /* FADERS */
+  document.getElementById("padsVolume").addEventListener("input", (e) => {
+    padsMasterVolume = parseFloat(e.target.value);
+    updatePadsVolume();
+  });
+
+  document.getElementById("drumsVolume").addEventListener("input", (e) => {
+    drumsMasterVolume = parseFloat(e.target.value);
+    updateDrumsVolume();
+  });
 }
 
 /* ================= INIT ================= */
@@ -190,6 +223,16 @@ async function init() {
   loadStart = Date.now();
 
   app.ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+  /* MASTER GAINS */
+  app.padMaster = app.ctx.createGain();
+  app.drumMaster = app.ctx.createGain();
+
+  app.padMaster.gain.value = padsMasterVolume;
+  app.drumMaster.gain.value = drumsMasterVolume;
+
+  app.padMaster.connect(app.ctx.destination);
+  app.drumMaster.connect(app.ctx.destination);
 
   const padEntries = Object.entries(PAD_FILES);
   const drumEntries = Object.entries(DRUM_FILES);

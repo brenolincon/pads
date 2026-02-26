@@ -29,6 +29,32 @@
         <p class="subtitulo">Clique para tocar/pausar os pads musicais</p>
       </header>
 
+      <div class="mixer">
+        <div class="fader-group">
+          <label>PADS</label>
+          <input
+            type="range"
+            id="padsVolume"
+            min="0"
+            max="1"
+            step="0.01"
+            value="1"
+          />
+        </div>
+
+        <div class="fader-group">
+          <label>DRUMS</label>
+          <input
+            type="range"
+            id="drumsVolume"
+            min="0"
+            max="1"
+            step="0.01"
+            value="1"
+          />
+        </div>
+      </div>
+
       <section class="secao-bateria">
         <!-- PADS FIXOS -->
         <div class="conteudo" id="pads">
