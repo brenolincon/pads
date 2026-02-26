@@ -2,7 +2,7 @@
 
 // Mapeamento de todos os sons disponíveis (pads)
 const SONS_DISPONIVEIS = {
-  A: "A Pad.wav",
+  A: "A Pad.mp3",
   "A#": "As Pad.mp3",
   B: "B Pad.mp3",
   C: "C Pad.mp3",
