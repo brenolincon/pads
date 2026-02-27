@@ -5,6 +5,8 @@
 let padsMasterVolume = 1;
 let drumsMasterVolume = 1;
 
+const PAD_FADE_TIME = 0.4; // 400ms
+
 const PAD_FILES = {
   A: "A Pad.mp3",
   "A#": "As Pad.mp3",
@@ -45,6 +47,11 @@ const app = {
   padGain: null,
   padMaster: null,
   drumMaster: null,
+  padsMuted: false,
+  drumsMuted: false,
+  padsSolo: false,
+  drumsSolo: false,
+  compressor: null,
 };
 
 /* ================= LOADER ================= */
@@ -78,13 +85,21 @@ function finishLoading() {
 /* ================= AUDIO ================= */
 
 function updatePadsVolume() {
-  if (app.padMaster) {
+  if (!app.padMaster) return;
+
+  if (app.padsMuted || (app.drumsSolo && !app.padsSolo)) {
+    app.padMaster.gain.value = 0;
+  } else {
     app.padMaster.gain.value = padsMasterVolume * padsMasterVolume;
   }
 }
 
 function updateDrumsVolume() {
-  if (app.drumMaster) {
+  if (!app.drumMaster) return;
+
+  if (app.drumsMuted || (app.padsSolo && !app.drumsSolo)) {
+    app.drumMaster.gain.value = 0;
+  } else {
     app.drumMaster.gain.value = drumsMasterVolume * drumsMasterVolume;
   }
 }
@@ -113,50 +128,129 @@ async function preload(entries, base, store) {
   }
 }
 
+function togglePadsMute() {
+  app.padsMuted = !app.padsMuted;
+  updatePadsVolume();
+}
+
+function toggleDrumsMute() {
+  app.drumsMuted = !app.drumsMuted;
+  updateDrumsVolume();
+}
+
+function togglePadsSolo() {
+  app.padsSolo = !app.padsSolo;
+  updatePadsVolume();
+  updateDrumsVolume();
+}
+
+function toggleDrumsSolo() {
+  app.drumsSolo = !app.drumsSolo;
+  updatePadsVolume();
+  updateDrumsVolume();
+}
+
 /* ================= PAD ================= */
 
 function stopPad() {
-  if (app.padSrc) {
-    try {
-      app.padSrc.stop();
-    } catch {}
+  if (!app.padSrc) return;
+
+  try {
+    app.padSrc.stop();
+  } catch {}
+  try {
     app.padSrc.disconnect();
+  } catch {}
+  try {
     app.padGain.disconnect();
-  }
+  } catch {}
+
+  app.padSrc = null;
+  app.padGain = null;
+  app.notaAtiva = null;
 
   document
     .querySelectorAll(".tecla.ativa")
     .forEach((el) => el.classList.remove("ativa"));
-
-  app.padSrc = null;
-  app.notaAtiva = null;
 }
 
 function playPad(nota) {
-  if (app.notaAtiva === nota) {
-    stopPad();
-    return;
-  }
-
-  stopPad();
-
   const buf = app.buffers[nota];
   if (!buf) return;
 
-  const src = app.ctx.createBufferSource();
-  const gain = app.ctx.createGain();
+  const now = app.ctx.currentTime;
 
-  gain.gain.value = 0.75;
+  // ===== SE CLICAR NO MESMO PAD → PARAR =====
+  if (app.notaAtiva === nota) {
+    if (app.padSrc) {
+      app.padGain.gain.cancelScheduledValues(now);
+      app.padGain.gain.setValueAtTime(app.padGain.gain.value, now);
+      app.padGain.gain.linearRampToValueAtTime(0, now + PAD_FADE_TIME);
 
-  src.buffer = buf;
-  src.loop = true;
+      app.padSrc.stop(now + PAD_FADE_TIME);
 
-  src.connect(gain).connect(app.padMaster);
-  src.start();
+      setTimeout(() => {
+        try {
+          app.padSrc.disconnect();
+        } catch {}
+        try {
+          app.padGain.disconnect();
+        } catch {}
+      }, PAD_FADE_TIME * 1000);
+    }
 
-  app.padSrc = src;
-  app.padGain = gain;
+    app.padSrc = null;
+    app.padGain = null;
+    app.notaAtiva = null;
+
+    document
+      .querySelectorAll(".tecla.ativa")
+      .forEach((el) => el.classList.remove("ativa"));
+
+    return;
+  }
+
+  // ===== NOVO PAD (CROSSFADE) =====
+  const newSrc = app.ctx.createBufferSource();
+  const newGain = app.ctx.createGain();
+
+  newSrc.buffer = buf;
+  newSrc.loop = true;
+
+  newGain.gain.setValueAtTime(0, now);
+  newGain.gain.linearRampToValueAtTime(0.75, now + PAD_FADE_TIME);
+
+  newSrc.connect(newGain).connect(app.padMaster);
+  newSrc.start(now);
+
+  // ===== PAD ANTIGO =====
+  if (app.padSrc) {
+    const oldSrc = app.padSrc;
+    const oldGain = app.padGain;
+
+    oldGain.gain.cancelScheduledValues(now);
+    oldGain.gain.setValueAtTime(oldGain.gain.value, now);
+    oldGain.gain.linearRampToValueAtTime(0, now + PAD_FADE_TIME);
+
+    oldSrc.stop(now + PAD_FADE_TIME);
+
+    setTimeout(() => {
+      try {
+        oldSrc.disconnect();
+      } catch {}
+      try {
+        oldGain.disconnect();
+      } catch {}
+    }, PAD_FADE_TIME * 1000);
+  }
+
+  app.padSrc = newSrc;
+  app.padGain = newGain;
   app.notaAtiva = nota;
+
+  document
+    .querySelectorAll(".tecla.ativa")
+    .forEach((el) => el.classList.remove("ativa"));
 
   document.querySelector(`[data-nota="${nota}"]`)?.classList.add("ativa");
 }
@@ -215,6 +309,26 @@ function bindEvents() {
     drumsMasterVolume = parseFloat(e.target.value);
     updateDrumsVolume();
   });
+
+  document.getElementById("padsMute").addEventListener("click", (e) => {
+    togglePadsMute();
+    e.target.classList.toggle("active");
+  });
+
+  document.getElementById("drumsMute").addEventListener("click", (e) => {
+    toggleDrumsMute();
+    e.target.classList.toggle("active");
+  });
+
+  document.getElementById("padsSolo").addEventListener("click", (e) => {
+    togglePadsSolo();
+    e.target.classList.toggle("active");
+  });
+
+  document.getElementById("drumsSolo").addEventListener("click", (e) => {
+    toggleDrumsSolo();
+    e.target.classList.toggle("active");
+  });
 }
 
 /* ================= INIT ================= */
@@ -224,9 +338,16 @@ async function init() {
 
   app.ctx = new (window.AudioContext || window.webkitAudioContext)();
 
-  /* MASTER GAINS */
   app.padMaster = app.ctx.createGain();
   app.drumMaster = app.ctx.createGain();
+  app.compressor = app.ctx.createDynamicsCompressor();
+
+  app.padMaster.gain.value = padsMasterVolume;
+  app.drumMaster.gain.value = drumsMasterVolume;
+
+  app.padMaster.connect(app.compressor);
+  app.drumMaster.connect(app.compressor);
+  app.compressor.connect(app.ctx.destination);
 
   app.padMaster.gain.value = padsMasterVolume;
   app.drumMaster.gain.value = drumsMasterVolume;

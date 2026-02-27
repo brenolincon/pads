@@ -485,6 +485,36 @@ header {
   cursor: pointer;
 }
 
+.mixer-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 40px;
+  margin-top: 10px;
+}
+
+.mixer-buttons .group {
+  display: flex;
+  gap: 10px;
+}
+
+.mixer-buttons button {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  background: #1f1f2e;
+  color: #fff;
+  transition: 0.2s ease;
+}
+
+.mixer-buttons button:hover {
+  background: #2e2e45;
+}
+
+.mixer-buttons button.active {
+  background: #8338ec;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.01ms !important;
