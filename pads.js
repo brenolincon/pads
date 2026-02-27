@@ -5,7 +5,14 @@
 let padsMasterVolume = 1;
 let drumsMasterVolume = 1;
 
-const PAD_FADE_TIME = 0.4; // 400ms
+const PAD_FADE_TIME = 0.4;
+const MIN_LOAD_TIME = 1500;
+const CONCURRENCY = 3;
+
+let TOTAL = 0;
+let LOADED = 0;
+let loadStart = 0;
+let audioInitialized = false;
 
 const PAD_FILES = {
   A: "A Pad.mp3",
@@ -31,13 +38,6 @@ const DRUM_FILES = {
   h: "melbournebounce-sub-drop.mp3",
 };
 
-const MIN_LOAD_TIME = 1500;
-const CONCURRENCY = 3;
-
-let TOTAL = 0;
-let LOADED = 0;
-let loadStart = 0;
-
 const app = {
   ctx: null,
   buffers: {},
@@ -47,11 +47,11 @@ const app = {
   padGain: null,
   padMaster: null,
   drumMaster: null,
+  compressor: null,
   padsMuted: false,
   drumsMuted: false,
   padsSolo: false,
   drumsSolo: false,
-  compressor: null,
 };
 
 /* ================= LOADER ================= */
@@ -82,7 +82,34 @@ function finishLoading() {
   );
 }
 
-/* ================= AUDIO ================= */
+/* ================= AUDIO INIT (iOS FIX) ================= */
+
+function initAudio() {
+  if (audioInitialized) return;
+
+  app.ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+  app.padMaster = app.ctx.createGain();
+  app.drumMaster = app.ctx.createGain();
+  app.compressor = app.ctx.createDynamicsCompressor();
+
+  app.compressor.threshold.value = -18;
+  app.compressor.knee.value = 30;
+  app.compressor.ratio.value = 4;
+  app.compressor.attack.value = 0.003;
+  app.compressor.release.value = 0.25;
+
+  app.padMaster.connect(app.compressor);
+  app.drumMaster.connect(app.compressor);
+  app.compressor.connect(app.ctx.destination);
+
+  updatePadsVolume();
+  updateDrumsVolume();
+
+  audioInitialized = true;
+}
+
+/* ================= VOLUME ================= */
 
 function updatePadsVolume() {
   if (!app.padMaster) return;
@@ -103,6 +130,8 @@ function updateDrumsVolume() {
     app.drumMaster.gain.value = drumsMasterVolume * drumsMasterVolume;
   }
 }
+
+/* ================= PRELOAD ================= */
 
 async function fetchDecode(path) {
   const r = await fetch(path);
@@ -128,89 +157,28 @@ async function preload(entries, base, store) {
   }
 }
 
-function togglePadsMute() {
-  app.padsMuted = !app.padsMuted;
-  updatePadsVolume();
-}
-
-function toggleDrumsMute() {
-  app.drumsMuted = !app.drumsMuted;
-  updateDrumsVolume();
-}
-
-function togglePadsSolo() {
-  app.padsSolo = !app.padsSolo;
-  updatePadsVolume();
-  updateDrumsVolume();
-}
-
-function toggleDrumsSolo() {
-  app.drumsSolo = !app.drumsSolo;
-  updatePadsVolume();
-  updateDrumsVolume();
-}
-
 /* ================= PAD ================= */
 
-function stopPad() {
-  if (!app.padSrc) return;
-
-  try {
-    app.padSrc.stop();
-  } catch {}
-  try {
-    app.padSrc.disconnect();
-  } catch {}
-  try {
-    app.padGain.disconnect();
-  } catch {}
-
-  app.padSrc = null;
-  app.padGain = null;
-  app.notaAtiva = null;
-
-  document
-    .querySelectorAll(".tecla.ativa")
-    .forEach((el) => el.classList.remove("ativa"));
-}
-
 function playPad(nota) {
+  if (!audioInitialized) return;
+
   const buf = app.buffers[nota];
   if (!buf) return;
 
   const now = app.ctx.currentTime;
 
-  // ===== SE CLICAR NO MESMO PAD → PARAR =====
+  // clicar no mesmo → parar
   if (app.notaAtiva === nota) {
-    if (app.padSrc) {
-      app.padGain.gain.cancelScheduledValues(now);
-      app.padGain.gain.setValueAtTime(app.padGain.gain.value, now);
-      app.padGain.gain.linearRampToValueAtTime(0, now + PAD_FADE_TIME);
+    app.padGain.gain.linearRampToValueAtTime(0, now + PAD_FADE_TIME);
+    app.padSrc.stop(now + PAD_FADE_TIME);
 
-      app.padSrc.stop(now + PAD_FADE_TIME);
-
-      setTimeout(() => {
-        try {
-          app.padSrc.disconnect();
-        } catch {}
-        try {
-          app.padGain.disconnect();
-        } catch {}
-      }, PAD_FADE_TIME * 1000);
-    }
-
-    app.padSrc = null;
-    app.padGain = null;
     app.notaAtiva = null;
-
     document
       .querySelectorAll(".tecla.ativa")
       .forEach((el) => el.classList.remove("ativa"));
-
     return;
   }
 
-  // ===== NOVO PAD (CROSSFADE) =====
   const newSrc = app.ctx.createBufferSource();
   const newGain = app.ctx.createGain();
 
@@ -221,27 +189,11 @@ function playPad(nota) {
   newGain.gain.linearRampToValueAtTime(0.75, now + PAD_FADE_TIME);
 
   newSrc.connect(newGain).connect(app.padMaster);
-  newSrc.start(now);
+  newSrc.start();
 
-  // ===== PAD ANTIGO =====
   if (app.padSrc) {
-    const oldSrc = app.padSrc;
-    const oldGain = app.padGain;
-
-    oldGain.gain.cancelScheduledValues(now);
-    oldGain.gain.setValueAtTime(oldGain.gain.value, now);
-    oldGain.gain.linearRampToValueAtTime(0, now + PAD_FADE_TIME);
-
-    oldSrc.stop(now + PAD_FADE_TIME);
-
-    setTimeout(() => {
-      try {
-        oldSrc.disconnect();
-      } catch {}
-      try {
-        oldGain.disconnect();
-      } catch {}
-    }, PAD_FADE_TIME * 1000);
+    app.padGain.gain.linearRampToValueAtTime(0, now + PAD_FADE_TIME);
+    app.padSrc.stop(now + PAD_FADE_TIME);
   }
 
   app.padSrc = newSrc;
@@ -258,12 +210,13 @@ function playPad(nota) {
 /* ================= DRUM ================= */
 
 function playDrum(k) {
+  if (!audioInitialized) return;
+
   const buf = app.drumBuffers[k];
   if (!buf) return;
 
   const s = app.ctx.createBufferSource();
   s.buffer = buf;
-
   s.connect(app.drumMaster);
   s.start();
 
@@ -275,31 +228,31 @@ function playDrum(k) {
 /* ================= EVENTS ================= */
 
 function bindEvents() {
-  document.getElementById("pads").addEventListener("click", async (e) => {
+  document.body.addEventListener(
+    "click",
+    () => {
+      initAudio();
+    },
+    { once: true },
+  );
+
+  document.getElementById("pads").addEventListener("click", (e) => {
     const b = e.target.closest("[data-nota]");
     if (!b) return;
-    await app.ctx.resume();
     playPad(b.dataset.nota);
   });
 
-  document.getElementById("drums").addEventListener("click", async (e) => {
+  document.getElementById("drums").addEventListener("click", (e) => {
     const b = e.target.closest("[data-drum]");
     if (!b) return;
-    await app.ctx.resume();
     playDrum(b.dataset.drum);
   });
 
-  window.addEventListener("keydown", async (e) => {
+  window.addEventListener("keydown", (e) => {
     const k = e.key.toLowerCase();
-    if (DRUM_FILES[k]) {
-      await app.ctx.resume();
-      playDrum(k);
-    }
+    if (DRUM_FILES[k]) playDrum(k);
   });
 
-  window.addEventListener("blur", stopPad);
-
-  /* FADERS */
   document.getElementById("padsVolume").addEventListener("input", (e) => {
     padsMasterVolume = parseFloat(e.target.value);
     updatePadsVolume();
@@ -309,26 +262,6 @@ function bindEvents() {
     drumsMasterVolume = parseFloat(e.target.value);
     updateDrumsVolume();
   });
-
-  document.getElementById("padsMute").addEventListener("click", (e) => {
-    togglePadsMute();
-    e.target.classList.toggle("active");
-  });
-
-  document.getElementById("drumsMute").addEventListener("click", (e) => {
-    toggleDrumsMute();
-    e.target.classList.toggle("active");
-  });
-
-  document.getElementById("padsSolo").addEventListener("click", (e) => {
-    togglePadsSolo();
-    e.target.classList.toggle("active");
-  });
-
-  document.getElementById("drumsSolo").addEventListener("click", (e) => {
-    toggleDrumsSolo();
-    e.target.classList.toggle("active");
-  });
 }
 
 /* ================= INIT ================= */
@@ -336,24 +269,8 @@ function bindEvents() {
 async function init() {
   loadStart = Date.now();
 
+  // criar ctx temporária só para decode (iOS precisa depois de gesto)
   app.ctx = new (window.AudioContext || window.webkitAudioContext)();
-
-  app.padMaster = app.ctx.createGain();
-  app.drumMaster = app.ctx.createGain();
-  app.compressor = app.ctx.createDynamicsCompressor();
-
-  app.padMaster.gain.value = padsMasterVolume;
-  app.drumMaster.gain.value = drumsMasterVolume;
-
-  app.padMaster.connect(app.compressor);
-  app.drumMaster.connect(app.compressor);
-  app.compressor.connect(app.ctx.destination);
-
-  app.padMaster.gain.value = padsMasterVolume;
-  app.drumMaster.gain.value = drumsMasterVolume;
-
-  app.padMaster.connect(app.ctx.destination);
-  app.drumMaster.connect(app.ctx.destination);
 
   const padEntries = Object.entries(PAD_FILES);
   const drumEntries = Object.entries(DRUM_FILES);
